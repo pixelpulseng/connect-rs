@@ -22,7 +22,7 @@ hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["server", "http1", "tokio", "service"] }
 tower = { version = "0.5", features = ["util"] }
 bytes = "1"
-nusb = "0.2"
+nusb = { version = "0.2", features = ["tokio"] }
 
 [profile.release]
 debug = true
