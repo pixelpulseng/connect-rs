@@ -1,0 +1,28 @@
+[package]
+name = "nonolith-connect"
+version = "1.3.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Rust port of Nonolith Connect: REST/WebSocket dataserver for CEE and ADALM1000 (M1K) source-measure units"
+
+[lib]
+name = "connect"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nonolith-connect"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+futures-util = "0.3"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["server", "http1", "tokio", "service"] }
+tower = { version = "0.5", features = ["util"] }
+bytes = "1"
+nusb = "0.2"
+
+[profile.release]
+debug = true
