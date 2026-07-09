@@ -123,7 +123,12 @@ impl OutputSource {
         })
     }
 
-    pub fn arb(mode: u32, phase: i64, values: Vec<(i64, f32)>, repeat_count: i64) -> Result<OutputSource> {
+    pub fn arb(
+        mode: u32,
+        phase: i64,
+        values: Vec<(i64, f32)>,
+        repeat_count: i64,
+    ) -> Result<OutputSource> {
         let mut repeat_count = repeat_count;
         if repeat_count == 0 {
             repeat_count = 1;
@@ -163,9 +168,16 @@ impl OutputSource {
     pub fn display_name(&self) -> &'static str {
         match &self.kind {
             SourceKind::Constant { .. } => "constant",
-            SourceKind::Periodic { wave: Wave::Sine, .. } => "sine",
-            SourceKind::Periodic { wave: Wave::Triangle, .. } => "triangle",
-            SourceKind::Periodic { wave: Wave::Square, .. } => "square",
+            SourceKind::Periodic {
+                wave: Wave::Sine, ..
+            } => "sine",
+            SourceKind::Periodic {
+                wave: Wave::Triangle,
+                ..
+            } => "triangle",
+            SourceKind::Periodic {
+                wave: Wave::Square, ..
+            } => "square",
             SourceKind::AdvSquare { .. } => "adv_square",
             SourceKind::Arb { .. } => "arb",
         }
@@ -309,7 +321,9 @@ impl OutputSource {
                 let m = (s + phase) % period;
                 s + (period - m).ceil()
             }
-            SourceKind::Periodic { period, phase, .. } => s + (period - (s + phase) % period) % period,
+            SourceKind::Periodic { period, phase, .. } => {
+                s + (period - (s + phase) % period) % period
+            }
             SourceKind::AdvSquare {
                 high_samples,
                 low_samples,
@@ -318,14 +332,17 @@ impl OutputSource {
             } => {
                 let per = (*high_samples + *low_samples) as i64;
                 let low = *low_samples as i64;
-                (sample as i64 + (per + low - (sample as i64 + *phase).rem_euclid(per)).rem_euclid(per)) as f64
+                (sample as i64
+                    + (per + low - (sample as i64 + *phase).rem_euclid(per)).rem_euclid(per))
+                    as f64
             }
             SourceKind::Arb { phase, values, .. } => {
                 let per = values[values.len() - 1].0;
                 if per == 0 {
                     return s;
                 }
-                (sample as i64 + (per - (sample as i64 - *phase).rem_euclid(per)).rem_euclid(per)) as f64
+                (sample as i64 + (per - (sample as i64 - *phase).rem_euclid(per)).rem_euclid(per))
+                    as f64
             }
         }
     }
@@ -352,7 +369,8 @@ impl OutputSource {
                         ..
                     }) = prev
                     {
-                        *phase += (sample as f64 + prev_phase) % prev_period / prev_period * *period
+                        *phase += (sample as f64 + prev_phase) % prev_period / prev_period
+                            * *period
                             - sample as f64;
                     }
                 }
@@ -379,7 +397,8 @@ impl OutputSource {
                     }) = prev
                     {
                         let old_period = (*ph + *pl) as i64;
-                        let frac = (sample as i64 + *pp).rem_euclid(old_period) as f64 / old_period as f64;
+                        let frac =
+                            (sample as i64 + *pp).rem_euclid(old_period) as f64 / old_period as f64;
                         *phase += (frac * period as f64).round() as i64 - (sample as i64 % period);
                     }
                 }
@@ -672,7 +691,10 @@ mod tests {
 
     #[test]
     fn make_source_from_json() {
-        let s = make_source(&serde_json::json!({"source":"constant","mode":1,"value":2.5,"hint":"dutycycle:4"})).unwrap();
+        let s = make_source(
+            &serde_json::json!({"source":"constant","mode":1,"value":2.5,"hint":"dutycycle:4"}),
+        )
+        .unwrap();
         assert_eq!(s.mode, 1);
         assert_eq!(s.hint, "dutycycle:4");
         let j = s.describe_json();

@@ -40,10 +40,11 @@ pub async fn run(state: Arc<ServerState>, port: u16, allow_remote: bool) -> std:
         let (socket, _peer) = listener.accept().await?;
         let app = app.clone();
         tokio::spawn(async move {
-            let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
-                use tower::Service;
-                app.clone().call(req.map(Body::new))
-            });
+            let service =
+                hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                    use tower::Service;
+                    app.clone().call(req.map(Body::new))
+                });
             let mut builder = hyper::server::conn::http1::Builder::new();
             builder
                 .title_case_headers(true)
@@ -103,7 +104,11 @@ async fn handle(State(state): State<Arc<ServerState>>, req: Request) -> Response
 
     // WebSocket upgrade on a first path segment of "ws"; upgrades on other
     // paths fall through and are treated as plain HTTP.
-    let first_seg = target.trim_start_matches('/').split(['/', '?']).next().unwrap_or("");
+    let first_seg = target
+        .trim_start_matches('/')
+        .split(['/', '?'])
+        .next()
+        .unwrap_or("");
     let req = if first_seg == "ws" {
         use axum::extract::FromRequestParts;
         let (mut parts, body) = req.into_parts();
@@ -143,7 +148,8 @@ async fn handle(State(state): State<Arc<ServerState>>, req: Request) -> Response
         // Every REST response echoes the request Origin (even when empty)
         return match resp.body {
             RestBody::Full(s) => {
-                let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                let status =
+                    StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
                 complete(status, &s, &[("Access-Control-Allow-Origin", &origin)])
             }
             RestBody::Stream(rx) => {

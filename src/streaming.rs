@@ -28,6 +28,7 @@ pub struct Stream {
 }
 
 impl Stream {
+    #[allow(clippy::too_many_arguments)] // mirrors the C++ Stream constructor
     pub fn new(
         id: &str,
         display_name: &str,
@@ -213,11 +214,7 @@ impl StreamingDevice {
     }
 
     pub fn buffer_min(&self) -> u64 {
-        if self.capture_i < self.capture_samples as u64 {
-            0
-        } else {
-            self.capture_i - self.capture_samples as u64
-        }
+        self.capture_i.saturating_sub(self.capture_samples as u64)
     }
 
     pub fn buffer_max(&self) -> u64 {
@@ -342,12 +339,23 @@ impl StreamingDevice {
 
     /// Rebuild channels/streams for new capture parameters. Pauses capture,
     /// zeroes counters, clears listeners, broadcasts deviceConfig.
-    pub fn configure(&mut self, mode: i32, sample_time: f64, samples: u32, continuous: bool, raw: bool) {
+    pub fn configure(
+        &mut self,
+        mode: i32,
+        sample_time: f64,
+        samples: u32,
+        continuous: bool,
+        raw: bool,
+    ) {
         self.pause_capture();
         match &self.backend {
             Backend::Test(_) => configure_test(self, mode, sample_time, samples, continuous, raw),
-            Backend::M1k(_) => crate::usb::m1k::configure(self, mode, sample_time, samples, continuous, raw),
-            Backend::Cee(_) => crate::usb::cee::configure(self, mode, sample_time, samples, continuous, raw),
+            Backend::M1k(_) => {
+                crate::usb::m1k::configure(self, mode, sample_time, samples, continuous, raw)
+            }
+            Backend::Cee(_) => {
+                crate::usb::cee::configure(self, mode, sample_time, samples, continuous, raw)
+            }
         }
         self.notify_config();
     }
@@ -355,7 +363,8 @@ impl StreamingDevice {
     /// setGain: gain is the user-visible multiplier; internal gain is
     /// round(gain * normalGain).
     pub fn set_gain(&mut self, chan: usize, stream: usize, gain: f64) {
-        let internal = (gain * self.channels[chan].streams[stream].normal_gain as f64).round() as i32;
+        let internal =
+            (gain * self.channels[chan].streams[stream].normal_gain as f64).round() as i32;
         match &mut self.backend {
             Backend::Test(_) => {
                 let (cid, sid) = {
@@ -646,7 +655,14 @@ pub fn make_test_device(serial: &str) -> StreamingDevice {
     dev
 }
 
-fn configure_test(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples: u32, continuous: bool, raw: bool) {
+fn configure_test(
+    dev: &mut StreamingDevice,
+    mode: i32,
+    sample_time: f64,
+    samples: u32,
+    continuous: bool,
+    raw: bool,
+) {
     let mut st = sample_time;
     if st < TEST_MIN_SAMPLE_TIME {
         st = TEST_MIN_SAMPLE_TIME;
@@ -665,8 +681,26 @@ fn configure_test(dev: &mut StreamingDevice, mode: i32, sample_time: f64, sample
         let mut c = Channel::new(cid, cname);
         c.source = Some(OutputSource::constant(0, 0.0));
         let suffix = cname;
-        let mut v = Stream::new("v", &format!("Voltage {suffix}"), "V", 0.0, 5.0, 1, 5.0 / 65536.0, 1);
-        let mut i = Stream::new("i", &format!("Current {suffix}"), "mA", -200.0, 200.0, 2, 0.4 / 65536.0 * 1000.0, 1);
+        let mut v = Stream::new(
+            "v",
+            &format!("Voltage {suffix}"),
+            "V",
+            0.0,
+            5.0,
+            1,
+            5.0 / 65536.0,
+            1,
+        );
+        let mut i = Stream::new(
+            "i",
+            &format!("Current {suffix}"),
+            "mA",
+            -200.0,
+            200.0,
+            2,
+            0.4 / 65536.0 * 1000.0,
+            1,
+        );
         v.allocate(samples);
         i.allocate(samples);
         c.streams.push(v);
@@ -709,7 +743,7 @@ mod tests {
     use super::*;
     use crate::device::OutMsg;
 
-    fn drain(rx: &mut tokio::sync::mpsc::UnboundedReceiver<OutMsg>) -> Vec<Value> {
+    fn drain(rx: &mut crate::device::ClientReceiver) -> Vec<Value> {
         let mut out = Vec::new();
         while let Ok(m) = rx.try_recv() {
             if let OutMsg::Json(v) = m {
@@ -787,7 +821,10 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["_action"], "deviceConfig");
         assert_eq!(msgs[0]["device"]["id"], "com.nonolithlabs.test~SM1");
-        assert_eq!(msgs[0]["device"]["channels"]["a"]["streams"]["v"]["units"], "V");
+        assert_eq!(
+            msgs[0]["device"]["channels"]["a"]["streams"]["v"]["units"],
+            "V"
+        );
 
         dev.configure(0, 1e-4, 3, false, false);
         dev.start_capture();
@@ -806,7 +843,10 @@ mod tests {
         let msgs = drain(&mut rx);
         // (feed also fires effective-handshake outputChanged broadcasts after
         // packetDone, matching the C++ handleInTransfer ordering)
-        let cs: Vec<_> = msgs.iter().filter(|m| m["_action"] == "captureState").collect();
+        let cs: Vec<_> = msgs
+            .iter()
+            .filter(|m| m["_action"] == "captureState")
+            .collect();
         assert_eq!(cs.len(), 1);
         assert_eq!(cs[0]["state"], false);
         assert_eq!(cs[0]["done"], true);

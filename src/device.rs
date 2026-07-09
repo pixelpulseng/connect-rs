@@ -8,7 +8,7 @@
 
 use crate::streaming::StreamingDevice;
 use serde_json::{Map, Value};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 
@@ -20,24 +20,41 @@ pub enum OutMsg {
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Once this many bytes of binary data frames are queued for a connection,
+/// further data frames are dropped until the client drains the backlog.
+/// Frames are self-describing (idx/sampleIndex), so clients tolerate gaps.
+/// JSON messages are never dropped — they carry protocol state.
+pub const BINARY_BACKLOG_LIMIT: usize = 8 * 1024 * 1024;
+
 #[derive(Clone, Debug)]
 pub struct ClientHandle {
     pub id: u64,
     tx: mpsc::UnboundedSender<OutMsg>,
+    queued_binary: Arc<AtomicUsize>,
+    dropping: Arc<AtomicBool>,
+}
+
+/// Receiving end of a connection's outgoing queue; keeps the backlog
+/// accounting in sync as the writer task drains messages.
+pub struct ClientReceiver {
+    rx: mpsc::UnboundedReceiver<OutMsg>,
+    queued_binary: Arc<AtomicUsize>,
 }
 
 impl ClientHandle {
-    pub fn new(tx: mpsc::UnboundedSender<OutMsg>) -> ClientHandle {
-        ClientHandle {
-            id: NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed),
-            tx,
-        }
-    }
-
     /// Create a handle plus the receiving end (tests and connection setup).
-    pub fn pair() -> (ClientHandle, mpsc::UnboundedReceiver<OutMsg>) {
+    pub fn pair() -> (ClientHandle, ClientReceiver) {
         let (tx, rx) = mpsc::unbounded_channel();
-        (ClientHandle::new(tx), rx)
+        let queued_binary = Arc::new(AtomicUsize::new(0));
+        (
+            ClientHandle {
+                id: NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed),
+                tx,
+                queued_binary: queued_binary.clone(),
+                dropping: Arc::new(AtomicBool::new(false)),
+            },
+            ClientReceiver { rx, queued_binary },
+        )
     }
 
     pub fn send_json(&self, v: Value) {
@@ -45,7 +62,39 @@ impl ClientHandle {
     }
 
     pub fn send_binary(&self, data: Vec<u8>) {
+        let queued = self.queued_binary.load(Ordering::Relaxed);
+        if queued + data.len() > BINARY_BACKLOG_LIMIT {
+            if !self.dropping.swap(true, Ordering::Relaxed) {
+                eprintln!(
+                    "Client {} is not keeping up ({queued} bytes queued); dropping data frames",
+                    self.id
+                );
+            }
+            return;
+        }
+        if self.dropping.swap(false, Ordering::Relaxed) {
+            eprintln!("Client {} caught up; resuming data frames", self.id);
+        }
+        self.queued_binary.fetch_add(data.len(), Ordering::Relaxed);
         let _ = self.tx.send(OutMsg::Binary(data));
+    }
+}
+
+impl ClientReceiver {
+    pub async fn recv(&mut self) -> Option<OutMsg> {
+        let m = self.rx.recv().await;
+        if let Some(OutMsg::Binary(b)) = &m {
+            self.queued_binary.fetch_sub(b.len(), Ordering::Relaxed);
+        }
+        m
+    }
+
+    pub fn try_recv(&mut self) -> Result<OutMsg, mpsc::error::TryRecvError> {
+        let m = self.rx.try_recv();
+        if let Ok(OutMsg::Binary(b)) = &m {
+            self.queued_binary.fetch_sub(b.len(), Ordering::Relaxed);
+        }
+        m
     }
 }
 
@@ -193,5 +242,35 @@ impl ServerState {
         }
         let _ = self.device_list_changed.send(());
         dev.lock().unwrap().on_disconnect();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binary_backpressure_drops_when_backlogged() {
+        let (client, mut rx) = ClientHandle::pair();
+        let frame = vec![0u8; 1024 * 1024];
+        for _ in 0..8 {
+            client.send_binary(frame.clone());
+        }
+        // Backlog at the limit: the next data frame is dropped, but JSON
+        // messages still go through.
+        client.send_binary(frame.clone());
+        client.send_json(serde_json::json!({"x": 1}));
+        let (mut binary, mut json) = (0, 0);
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                OutMsg::Binary(_) => binary += 1,
+                OutMsg::Json(_) => json += 1,
+            }
+        }
+        assert_eq!(binary, 8);
+        assert_eq!(json, 1);
+        // Draining the queue resets the accounting; sends resume.
+        client.send_binary(frame.clone());
+        assert!(matches!(rx.try_recv(), Ok(OutMsg::Binary(_))));
     }
 }

@@ -27,9 +27,28 @@ fn main() {
 
         connect::usb::start(state.clone());
 
-        if let Err(e) = connect::net::run(state, port, allow_remote).await {
-            eprintln!("Exception: {e}");
-            std::process::exit(1);
+        tokio::select! {
+            r = connect::net::run(state.clone(), port, allow_remote) => {
+                if let Err(e) = r {
+                    eprintln!("Exception: {e}");
+                    std::process::exit(1);
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("Interrupted; shutting down");
+                shutdown(&state);
+            }
         }
     });
+}
+
+/// Pause any running captures so devices stop streaming and USB interfaces
+/// are released before the process exits.
+fn shutdown(state: &ServerState) {
+    let devices: Vec<_> = state.devices.lock().unwrap().clone();
+    for dev in devices {
+        if let connect::device::AnyDevice::Streaming(d) = &mut *dev.lock().unwrap() {
+            d.pause_capture();
+        }
+    }
 }

@@ -21,7 +21,10 @@ impl WsConn {
             "version": crate::SERVER_VERSION,
             "gitVersion": crate::server_git_version(),
         }));
-        let conn = WsConn { client, device: None };
+        let conn = WsConn {
+            client,
+            device: None,
+        };
         conn.send_device_list(state);
         conn
     }
@@ -69,7 +72,11 @@ impl WsConn {
                 return Ok(());
             };
 
-            if dev.lock().unwrap().process_message(&self.client, &cmd, &n)? {
+            if dev
+                .lock()
+                .unwrap()
+                .process_message(&self.client, &cmd, &n)?
+            {
                 return Ok(());
             }
 
@@ -108,17 +115,18 @@ mod tests {
     use crate::device::{AnyDevice, OutMsg};
     use crate::streaming::make_test_device;
     use std::sync::Mutex;
-    use tokio::sync::mpsc::UnboundedReceiver;
 
-    fn setup() -> (Arc<ServerState>, WsConn, UnboundedReceiver<OutMsg>) {
+    fn setup() -> (Arc<ServerState>, WsConn, crate::device::ClientReceiver) {
         let state = ServerState::new(false, false);
-        state.add_device(Arc::new(Mutex::new(AnyDevice::Streaming(make_test_device("WS1")))));
+        state.add_device(Arc::new(Mutex::new(AnyDevice::Streaming(
+            make_test_device("WS1"),
+        ))));
         let (client, rx) = ClientHandle::pair();
         let conn = WsConn::new(&state, client);
         (state, conn, rx)
     }
 
-    fn drain(rx: &mut UnboundedReceiver<OutMsg>) -> Vec<Value> {
+    fn drain(rx: &mut crate::device::ClientReceiver) -> Vec<Value> {
         let mut out = Vec::new();
         while let Ok(m) = rx.try_recv() {
             if let OutMsg::Json(v) = m {
@@ -181,7 +189,10 @@ mod tests {
     fn select_device_sends_device_config() {
         let (state, mut conn, mut rx) = setup();
         drain(&mut rx);
-        conn.on_message(&state, r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#);
+        conn.on_message(
+            &state,
+            r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#,
+        );
         let msgs = drain(&mut rx);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["_action"], "deviceConfig");
@@ -192,7 +203,10 @@ mod tests {
     fn command_errors_carry_id() {
         let (state, mut conn, mut rx) = setup();
         drain(&mut rx);
-        conn.on_message(&state, r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#);
+        conn.on_message(
+            &state,
+            r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#,
+        );
         drain(&mut rx);
         conn.on_message(&state, r#"{"_cmd": "set", "id": 42, "channel": "zz"}"#);
         let msgs = drain(&mut rx);
@@ -205,7 +219,10 @@ mod tests {
     fn unknown_command_gets_no_reply() {
         let (state, mut conn, mut rx) = setup();
         drain(&mut rx);
-        conn.on_message(&state, r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#);
+        conn.on_message(
+            &state,
+            r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#,
+        );
         drain(&mut rx);
         // Q6 kept: unknown commands are logged, no reply
         conn.on_message(&state, r#"{"_cmd": "frobnicate", "id": 7}"#);
@@ -216,7 +233,10 @@ mod tests {
     fn full_set_flow_broadcasts_output_changed() {
         let (state, mut conn, mut rx) = setup();
         drain(&mut rx);
-        conn.on_message(&state, r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#);
+        conn.on_message(
+            &state,
+            r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#,
+        );
         drain(&mut rx);
         conn.on_message(
             &state,
@@ -234,7 +254,10 @@ mod tests {
     fn detach_on_close() {
         let (state, mut conn, mut rx) = setup();
         drain(&mut rx);
-        conn.on_message(&state, r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#);
+        conn.on_message(
+            &state,
+            r#"{"_cmd": "selectDevice", "id": "com.nonolithlabs.test~WS1"}"#,
+        );
         let dev = state.device_by_id("com.nonolithlabs.test~WS1").unwrap();
         {
             let d = dev.lock().unwrap();

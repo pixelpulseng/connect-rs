@@ -104,6 +104,7 @@ impl CeeCal {
         })
     }
 
+    #[allow(clippy::wrong_self_convention)] // serializer, not a conversion
     fn to_bytes(&self) -> Vec<u8> {
         let mut b = Vec::with_capacity(25);
         b.extend_from_slice(&self.magic.to_le_bytes());
@@ -159,8 +160,14 @@ fn signextend12(v: u16) -> i16 {
 
 /// Unpack one 6-byte IN sample into (av, ai, bv, bi).
 fn unpack_in_sample(d: &[u8]) -> (i16, i16, i16, i16) {
-    let (avl, ail, aih_avh, bvl, bil, bih_bvh) =
-        (d[0] as u16, d[1] as u16, d[2] as u16, d[3] as u16, d[4] as u16, d[5] as u16);
+    let (avl, ail, aih_avh, bvl, bil, bih_bvh) = (
+        d[0] as u16,
+        d[1] as u16,
+        d[2] as u16,
+        d[3] as u16,
+        d[4] as u16,
+        d[5] as u16,
+    );
     (
         signextend12(((aih_avh & 0x0f) << 8) | avl),
         signextend12(((aih_avh & 0xf0) << 4) | ail),
@@ -171,7 +178,11 @@ fn unpack_in_sample(d: &[u8]) -> (i16, i16, i16, i16) {
 
 /// Pack two 12-bit values into a 3-byte OUT sample.
 fn pack_out_sample(a: u16, b: u16) -> [u8; 3] {
-    [(a & 0xff) as u8, (b & 0xff) as u8, (((b >> 4) & 0xf0) | (a >> 8)) as u8]
+    [
+        (a & 0xff) as u8,
+        (b & 0xff) as u8,
+        (((b >> 4) & 0xf0) | (a >> 8)) as u8,
+    ]
 }
 
 pub fn create(handle: UsbHandle, serial: String) -> std::result::Result<DevicePtr, Error> {
@@ -188,7 +199,9 @@ pub fn create(handle: UsbHandle, serial: String) -> std::result::Result<DevicePt
             let per_ns = data[3];
             min_per = data[4] as u32;
             if per_ns != 250 {
-                eprintln!("    Error: alternate timer clock {per_ns} is not supported in this release.");
+                eprintln!(
+                    "    Error: alternate timer clock {per_ns} is not supported in this release."
+                );
             }
         }
         git_version = handle.read_string(0x00, 0, 2);
@@ -236,7 +249,10 @@ pub fn create(handle: UsbHandle, serial: String) -> std::result::Result<DevicePt
     if cal.current_gain_b == u32::MAX {
         cal.current_gain_b = DEFAULT_CURRENT_GAIN;
     }
-    eprintln!("    Current gain {} {}", cal.current_gain_a, cal.current_gain_b);
+    eprintln!(
+        "    Current gain {} {}",
+        cal.current_gain_a, cal.current_gain_b
+    );
 
     let backend = CeeBackend {
         handle,
@@ -281,7 +297,14 @@ pub fn create(handle: UsbHandle, serial: String) -> std::result::Result<DevicePt
     Ok(Arc::new(Mutex::new(AnyDevice::Streaming(dev))))
 }
 
-pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples: u32, continuous: bool, raw: bool) {
+pub fn configure(
+    dev: &mut StreamingDevice,
+    mode: i32,
+    sample_time: f64,
+    samples: u32,
+    continuous: bool,
+    raw: bool,
+) {
     let min_per = be(dev).min_per;
     let mut per = (sample_time * TIMER_CLOCK).round() as u32;
     if per < min_per {
@@ -325,13 +348,32 @@ pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples
     dev.channels.clear();
     if dev.dev_mode == 0 {
         let current_limit = dev.current_limit;
-        for (ci, (cid, cname, igain)) in [("a", "A", gain_a), ("b", "B", gain_b)].iter().enumerate() {
+        for (ci, (cid, cname, igain)) in [("a", "A", gain_a), ("b", "B", gain_b)].iter().enumerate()
+        {
             let mut c = Channel::new(cid, cname);
             c.source = Some(OutputSource::constant(0, 0.0));
             let (mut v, mut i) = if raw {
                 (
-                    Stream::new("v", &format!("Voltage {cname}"), "LSB", -100.0, 2047.0, 1, V_MAX / 2048.0, 1),
-                    Stream::new("i", &format!("Current {cname}"), "LSB", -2048.0, 2047.0, 2, 1.0, 2),
+                    Stream::new(
+                        "v",
+                        &format!("Voltage {cname}"),
+                        "LSB",
+                        -100.0,
+                        2047.0,
+                        1,
+                        V_MAX / 2048.0,
+                        1,
+                    ),
+                    Stream::new(
+                        "i",
+                        &format!("Current {cname}"),
+                        "LSB",
+                        -2048.0,
+                        2047.0,
+                        2,
+                        1.0,
+                        2,
+                    ),
                 )
             } else {
                 let mut limit = 2.5 / (*igain as f64 / CURRENT_GAIN_SCALE) / 2.0 * 1000.0;
@@ -339,8 +381,26 @@ pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples
                     limit = current_limit as f64;
                 }
                 (
-                    Stream::new("v", &format!("Voltage {cname}"), "V", V_MIN, V_MAX, 1, V_MAX / 2048.0, 1),
-                    Stream::new("i", &format!("Current {cname}"), "mA", -limit as f32, limit as f32, 2, 1.0, 2),
+                    Stream::new(
+                        "v",
+                        &format!("Voltage {cname}"),
+                        "V",
+                        V_MIN,
+                        V_MAX,
+                        1,
+                        V_MAX / 2048.0,
+                        1,
+                    ),
+                    Stream::new(
+                        "i",
+                        &format!("Current {cname}"),
+                        "mA",
+                        -limit as f32,
+                        limit as f32,
+                        2,
+                        1.0,
+                        2,
+                    ),
                 )
             };
             if let Some(g) = prev_gains.get(ci) {
@@ -371,7 +431,8 @@ pub fn set_current_limit(dev: &mut StreamingDevice, mode: u32) {
             return;
         }
     };
-    b.handle.control_in(0xC0, CMD_ISET_DAC, a as u16, bb as u16, 0);
+    b.handle
+        .control_in(0xC0, CMD_ISET_DAC, a as u16, bb as u16, 0);
     dev.current_limit = mode;
 }
 
@@ -402,7 +463,9 @@ pub fn set_internal_gain(dev: &mut StreamingDevice, chan: usize, stream: usize, 
         on_pause_capture(dev);
     }
 
-    be(dev).handle.control_out(0x40, CMD_CONFIG_GAIN, gainval, streamval, &[]);
+    be(dev)
+        .handle
+        .control_out(0x40, CMD_CONFIG_GAIN, gainval, streamval, &[]);
 
     if was_capturing {
         on_start_capture(dev);
@@ -433,7 +496,9 @@ pub fn on_start_capture(dev: &mut StreamingDevice) {
     };
 
     let per = be(dev).xmega_per as u16;
-    be(dev).handle.control_out(0x40, CMD_CONFIG_CAPTURE, per, DEVMODE_2SMU, &[]);
+    be(dev)
+        .handle
+        .control_out(0x40, CMD_CONFIG_CAPTURE, per, DEVMODE_2SMU, &[]);
 
     // Ignore the effect of output samples we sent before pausing
     dev.capture_o = dev.capture_i;
@@ -493,7 +558,9 @@ pub fn on_start_capture(dev: &mut StreamingDevice) {
         tasks.push(tokio::spawn(async move {
             let mut ep = ep_out;
             for _ in 0..NTRANSFERS {
-                let Some(dev) = self_ref.upgrade() else { return };
+                let Some(dev) = self_ref.upgrade() else {
+                    return;
+                };
                 let data = {
                     let mut dev = dev.lock().unwrap();
                     match &mut *dev {
@@ -533,7 +600,8 @@ pub fn on_start_capture(dev: &mut StreamingDevice) {
 pub fn on_pause_capture(dev: &mut StreamingDevice) {
     {
         let b = bm(dev);
-        b.handle.control_out(0x40, CMD_CONFIG_CAPTURE, 0, DEVMODE_OFF, &[]);
+        b.handle
+            .control_out(0x40, CMD_CONFIG_CAPTURE, 0, DEVMODE_OFF, &[]);
         for t in b.tasks.drain(..) {
             t.abort();
         }
@@ -585,15 +653,31 @@ fn handle_in_transfer(dev: &mut StreamingDevice, buffer: &[u8]) {
             let s = &pkt[4 + i * 6..4 + i * 6 + 6];
             let (av, ai, bv, bi) = unpack_in_sample(s);
 
-            dev.put(0, 0, ((cal.offset_a_v as f64 + av as f64) * v_factor / gains[0]) as f32);
+            dev.put(
+                0,
+                0,
+                ((cal.offset_a_v as f64 + av as f64) * v_factor / gains[0]) as f32,
+            );
             if mode_a & 0x3 != DISABLED {
-                dev.put(0, 1, ((cal.offset_a_i as f64 + ai as f64) * i_factor_a / gains[1]) as f32);
+                dev.put(
+                    0,
+                    1,
+                    ((cal.offset_a_i as f64 + ai as f64) * i_factor_a / gains[1]) as f32,
+                );
             } else {
                 dev.put(0, 1, 0.0);
             }
-            dev.put(1, 0, ((cal.offset_b_v as f64 + bv as f64) * v_factor / gains[2]) as f32);
+            dev.put(
+                1,
+                0,
+                ((cal.offset_b_v as f64 + bv as f64) * v_factor / gains[2]) as f32,
+            );
             if mode_b & 0x3 != DISABLED {
-                dev.put(1, 1, ((cal.offset_b_i as f64 + bi as f64) * i_factor_b / gains[3]) as f32);
+                dev.put(
+                    1,
+                    1,
+                    ((cal.offset_b_i as f64 + bi as f64) * i_factor_b / gains[3]) as f32,
+                );
             } else {
                 dev.put(1, 1, 0.0);
             }
@@ -620,7 +704,8 @@ fn encode_out(raw_mode: bool, current_limit: u32, mode: u8, val: f32, igain: u32
         v = (4095.0 * val as f64 / 5.0) as i32;
     } else if mode == SIMV {
         let val = val.clamp(-(current_limit as f32), current_limit as f32);
-        v = (4095.0 * (1.25 + (igain as f64 / CURRENT_GAIN_SCALE) * val as f64 / 1000.0) / 2.5) as i32;
+        v = (4095.0 * (1.25 + (igain as f64 / CURRENT_GAIN_SCALE) * val as f64 / 1000.0) / 2.5)
+            as i32;
     }
     v.clamp(0, 4095) as u16
 }
@@ -636,7 +721,10 @@ fn fill_out_transfer(dev: &mut StreamingDevice) -> Vec<u8> {
     let osize = OUT_PACKET_SIZE * ppt;
     let mut buf = vec![0u8; osize];
 
-    if dev.channels.len() == 2 && dev.channels[0].source.is_some() && dev.channels[1].source.is_some() {
+    if dev.channels.len() == 2
+        && dev.channels[0].source.is_some()
+        && dev.channels[1].source.is_some()
+    {
         let mode_a = dev.channels[0].source.as_ref().unwrap().mode as u8;
         let mode_b = dev.channels[1].source.as_ref().unwrap().mode as u8;
         let mut o = dev.capture_o;
@@ -645,8 +733,16 @@ fn fill_out_transfer(dev: &mut StreamingDevice) -> Vec<u8> {
             buf[pkt] = mode_a;
             buf[pkt + 1] = mode_b;
             for i in 0..OUT_SAMPLES_PER_PACKET {
-                let av = dev.channels[0].source.as_mut().unwrap().get_value(o, sample_time);
-                let bv = dev.channels[1].source.as_mut().unwrap().get_value(o, sample_time);
+                let av = dev.channels[0]
+                    .source
+                    .as_mut()
+                    .unwrap()
+                    .get_value(o, sample_time);
+                let bv = dev.channels[1]
+                    .source
+                    .as_mut()
+                    .unwrap()
+                    .get_value(o, sample_time);
                 let a = encode_out(raw_mode, current_limit, mode_a, av, cal.current_gain_a);
                 let b = encode_out(raw_mode, current_limit, mode_b, bv, cal.current_gain_b);
                 let s = pack_out_sample(a, b);
@@ -661,9 +757,13 @@ fn fill_out_transfer(dev: &mut StreamingDevice) -> Vec<u8> {
 }
 
 fn gpio(dev: &StreamingDevice, set: bool, dir: u8, out: u8) -> Value {
-    let (r, buf) = be(dev)
-        .handle
-        .control_in(0xC0, if set { 0x21 } else { 0x20 }, out as u16, dir as u16, 4);
+    let (r, buf) = be(dev).handle.control_in(
+        0xC0,
+        if set { 0x21 } else { 0x20 },
+        out as u16,
+        dir as u16,
+        4,
+    );
     let get = |i: usize| buf.get(i).copied().unwrap_or(0);
     json!({
         "status": r,
@@ -685,7 +785,12 @@ fn ret(id: i64, extra: &[(&str, Value)]) -> Value {
 
 // ---- WS commands (cee.cpp processMessage) ----
 
-pub fn process_message(dev: &mut StreamingDevice, client: &ClientHandle, cmd: &str, n: &Value) -> Result<bool> {
+pub fn process_message(
+    dev: &mut StreamingDevice,
+    client: &ClientHandle,
+    cmd: &str,
+    n: &Value,
+) -> Result<bool> {
     let id = json_int_prop_def(n, "id", 0);
     match cmd {
         "writeCalibration" => {
@@ -746,15 +851,25 @@ pub fn process_message(dev: &mut StreamingDevice, client: &ClientHandle, cmd: &s
 
 // ---- REST (cee.cpp handleREST: /gpio) ----
 
-pub fn handle_rest(dev: &mut StreamingDevice, req: &RestRequest, level: usize) -> Option<RestResponse> {
+pub fn handle_rest(
+    dev: &mut StreamingDevice,
+    req: &RestRequest,
+    level: usize,
+) -> Option<RestResponse> {
     let seg = req.parts.get(level).map(|s| s.as_str()).unwrap_or("");
     if seg != "gpio" {
         return None;
     }
     Some(if req.method == "POST" {
         let map = parse_query(&req.body);
-        let dir = map.get("dir").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0) as u8;
-        let out = map.get("out").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0) as u8;
+        let dir = map
+            .get("dir")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0) as u8;
+        let out = map
+            .get("out")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0) as u8;
         RestResponse::json(&gpio(dev, true, dir, out))
     } else {
         RestResponse::json(&gpio(dev, false, 0, 0))
@@ -768,7 +883,11 @@ mod tests {
     #[test]
     fn sample_pack_unpack_roundtrip() {
         // 12-bit signed values pack into 6-byte IN samples
-        for (av, ai, bv, bi) in [(0i16, 0, 0, 0), (2047, -2048, 1, -1), (-100, 100, -2000, 2000)] {
+        for (av, ai, bv, bi) in [
+            (0i16, 0, 0, 0),
+            (2047, -2048, 1, -1),
+            (-100, 100, -2000, 2000),
+        ] {
             let e = |v: i16| (v as u16) & 0xfff;
             let s = [
                 (e(av) & 0xff) as u8,
@@ -794,15 +913,27 @@ mod tests {
     fn encode_out_values() {
         // SVMI: 4095 * val / 5
         assert_eq!(encode_out(false, 200, SVMI, 0.0, DEFAULT_CURRENT_GAIN), 0);
-        assert_eq!(encode_out(false, 200, SVMI, 5.0, DEFAULT_CURRENT_GAIN), 4095);
-        assert_eq!(encode_out(false, 200, SVMI, 2.5, DEFAULT_CURRENT_GAIN), 2047);
+        assert_eq!(
+            encode_out(false, 200, SVMI, 5.0, DEFAULT_CURRENT_GAIN),
+            4095
+        );
+        assert_eq!(
+            encode_out(false, 200, SVMI, 2.5, DEFAULT_CURRENT_GAIN),
+            2047
+        );
         // SIMV: 4095 * (1.25 + gain*val/1000) / 2.5 with gain 3.15
         let v = encode_out(false, 200, SIMV, 0.0, DEFAULT_CURRENT_GAIN);
         assert_eq!(v, (4095.0 * 1.25 / 2.5) as u16);
         // disabled: 0
-        assert_eq!(encode_out(false, 200, DISABLED, 3.0, DEFAULT_CURRENT_GAIN), 0);
+        assert_eq!(
+            encode_out(false, 200, DISABLED, 3.0, DEFAULT_CURRENT_GAIN),
+            0
+        );
         // raw
-        assert_eq!(encode_out(true, 200, SVMI, 5000.0, DEFAULT_CURRENT_GAIN), 4095);
+        assert_eq!(
+            encode_out(true, 200, SVMI, 5000.0, DEFAULT_CURRENT_GAIN),
+            4095
+        );
     }
 
     #[test]

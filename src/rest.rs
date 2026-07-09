@@ -43,7 +43,10 @@ impl RestRequest {
     }
 
     pub fn param(&self, key: &str, def: &str) -> String {
-        self.params.get(key).cloned().unwrap_or_else(|| def.to_string())
+        self.params
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| def.to_string())
     }
 
     fn part(&self, level: usize) -> &str {
@@ -91,7 +94,10 @@ impl RestResponse {
     pub fn error(e: &Error) -> RestResponse {
         eprintln!("Exception while processing request: {e}");
         // Yes, 402 — matches the C++ respondError (SPEC.md Q4).
-        RestResponse::full(402, serde_json::to_string_pretty(&json!({"error": e.0})).unwrap())
+        RestResponse::full(
+            402,
+            serde_json::to_string_pretty(&json!({"error": e.0})).unwrap(),
+        )
     }
 
     #[cfg(test)]
@@ -255,7 +261,9 @@ pub fn map_get_num(map: &HashMap<String, String>, key: &str, def: f64) -> Result
 fn rest_output(dev: &mut StreamingDevice, chan: usize, req: &RestRequest) -> Option<RestResponse> {
     if req.method == "POST" {
         Some(match rest_output_post(dev, chan, &req.body) {
-            Ok(()) => RestResponse::json(&dev.channels[chan].source.as_ref().unwrap().describe_json()),
+            Ok(()) => {
+                RestResponse::json(&dev.channels[chan].source.as_ref().unwrap().describe_json())
+            }
             Err(e) => RestResponse::error(&e),
         })
     } else {
@@ -266,7 +274,8 @@ fn rest_output(dev: &mut StreamingDevice, chan: usize, req: &RestRequest) -> Opt
 
 fn rest_output_post(dev: &mut StreamingDevice, chan: usize, postdata: &str) -> Result<()> {
     let source = if postdata.starts_with('{') {
-        let n: Value = serde_json::from_str(postdata).map_err(|e| Error(format!("JSON parse error: {e}")))?;
+        let n: Value =
+            serde_json::from_str(postdata).map_err(|e| Error(format!("JSON parse error: {e}")))?;
         make_source(&n)?
     } else {
         form_source(dev.sample_time, postdata)?
@@ -280,7 +289,11 @@ fn rest_output_post(dev: &mut StreamingDevice, chan: usize, postdata: &str) -> R
 fn form_source(sample_time: f64, postdata: &str) -> Result<OutputSource> {
     let map = parse_query(postdata);
     let value = map_get_num(&map, "value", 0.0)? as f32;
-    let mode = map.get("mode").cloned().unwrap_or_else(|| "0".into()).to_lowercase();
+    let mode = map
+        .get("mode")
+        .cloned()
+        .unwrap_or_else(|| "0".into())
+        .to_lowercase();
     let modeval: u32 = match mode.as_str() {
         "0" | "disabled" | "d" => 0,
         "1" | "svmi" | "v" => 1,
@@ -288,7 +301,10 @@ fn form_source(sample_time: f64, postdata: &str) -> Result<OutputSource> {
         _ => 0,
     };
 
-    let source = map.get("wave").cloned().unwrap_or_else(|| "constant".into());
+    let source = map
+        .get("wave")
+        .cloned()
+        .unwrap_or_else(|| "constant".into());
     let hint = map.get("hint").cloned().unwrap_or_default();
 
     let mut src = match source.as_str() {
@@ -306,7 +322,15 @@ fn form_source(sample_time: f64, postdata: &str) -> Result<OutputSource> {
             }
             let phase = (map_get_num(&map, "phase", 0.0)? / sample_time) as i64;
             let rel_phase = map.get("relPhase").map(|s| s == "1").unwrap_or(true);
-            OutputSource::adv_square(modeval, value1, value2, time1 as u32, time2 as u32, phase, rel_phase)?
+            OutputSource::adv_square(
+                modeval,
+                value1,
+                value2,
+                time1 as u32,
+                time2 as u32,
+                phase,
+                rel_phase,
+            )?
         }
         "arb" => {
             let mut phase = (map_get_num(&map, "phase", -1.0)? / sample_time) as i64;
@@ -347,7 +371,15 @@ fn form_source(sample_time: f64, postdata: &str) -> Result<OutputSource> {
                 "triangle" => crate::source::Wave::Triangle,
                 _ => crate::source::Wave::Square,
             };
-            OutputSource::periodic(modeval, w, value as f64, amplitude, period, phase, rel_phase)
+            OutputSource::periodic(
+                modeval,
+                w,
+                value as f64,
+                amplitude,
+                period,
+                phase,
+                rel_phase,
+            )
         }
         _ => return Err(Error::new("Invalid source")),
     };
@@ -513,16 +545,27 @@ mod tests {
     #[test]
     fn capture_post() {
         let state = state_with_device("C1");
-        let r = post(&state, "/rest/v1/devices/com.nonolithlabs.test~C1", "capture=on");
+        let r = post(
+            &state,
+            "/rest/v1/devices/com.nonolithlabs.test~C1",
+            "capture=on",
+        );
         assert_eq!(r.json_body()["captureState"], true);
-        let r = post(&state, "/rest/v1/devices/com.nonolithlabs.test~C1", "capture=off");
+        let r = post(
+            &state,
+            "/rest/v1/devices/com.nonolithlabs.test~C1",
+            "capture=off",
+        );
         assert_eq!(r.json_body()["captureState"], false);
     }
 
     #[test]
     fn configuration_clamps_sample_time() {
         let state = state_with_device("CF1");
-        let r = get(&state, "/rest/v1/devices/com.nonolithlabs.test~CF1/configuration");
+        let r = get(
+            &state,
+            "/rest/v1/devices/com.nonolithlabs.test~CF1/configuration",
+        );
         assert_eq!(r.status, 200);
         assert!(r.json_body().get("captureState").is_none());
 
@@ -557,7 +600,11 @@ mod tests {
         assert_eq!(j["effective"], false);
 
         // sine at 10 Hz with 1e-4 sample time -> period 1000 samples
-        let r = post(&state, base, "mode=v&wave=sine&value=2.5&amplitude=1&frequency=10");
+        let r = post(
+            &state,
+            base,
+            "mode=v&wave=sine&value=2.5&amplitude=1&frequency=10",
+        );
         let j = r.json_body();
         assert_eq!(j["source"], "sine");
         assert_eq!(j["period"], 1000.0);
@@ -569,7 +616,11 @@ mod tests {
         assert_eq!(r.json_body()["mode"], 0);
 
         // JSON body works too
-        let r = post(&state, base, r#"{"source":"constant","mode":1,"value":1.25}"#);
+        let r = post(
+            &state,
+            base,
+            r#"{"source":"constant","mode":1,"value":1.25}"#,
+        );
         assert_eq!(r.json_body()["value"], 1.25);
 
         // errors are 402 with an error body
@@ -586,7 +637,11 @@ mod tests {
         let state = state_with_device("O2");
         let base = "/rest/v1/devices/com.nonolithlabs.test~O2/a/output";
         // %3A / %2C are the only decoded escapes; sampleTime 1e-4 so 0.001s = 10 samples
-        let r = post(&state, base, "mode=1&wave=arb&points=0%3A0%2C0.001%3A5&repeat=0");
+        let r = post(
+            &state,
+            base,
+            "mode=1&wave=arb&points=0%3A0%2C0.001%3A5&repeat=0",
+        );
         let j = r.json_body();
         assert_eq!(j["source"], "arb");
         assert_eq!(j["values"][0]["t"], 0);
@@ -627,7 +682,9 @@ mod tests {
             "/rest/v1/devices/com.nonolithlabs.test~CSV1/a/input?resample=0.0001&start=0&count=3",
         );
         assert_eq!(r.status, 200);
-        let RestBody::Stream(mut rx) = r.body else { panic!() };
+        let RestBody::Stream(mut rx) = r.body else {
+            panic!()
+        };
 
         // header first
         assert_eq!(rx.try_recv().unwrap(), "Voltage A (V),Current A (mA)\n");
@@ -674,7 +731,11 @@ mod tests {
         dev.lock().unwrap().on_client_attach(&client);
         while rx.try_recv().is_ok() {}
 
-        post(&state, "/rest/v1/devices/com.nonolithlabs.test~BR1", "capture=on");
+        post(
+            &state,
+            "/rest/v1/devices/com.nonolithlabs.test~BR1",
+            "capture=on",
+        );
         let mut actions = Vec::new();
         while let Ok(m) = rx.try_recv() {
             if let crate::device::OutMsg::Json(v) = m {

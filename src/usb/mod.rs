@@ -54,7 +54,14 @@ fn decompose(bm_request_type: u8) -> (ControlType, Recipient) {
 
 impl UsbHandle {
     /// IN control transfer; returns (status, data).
-    pub fn control_in(&self, bm_request_type: u8, b_request: u8, w_value: u16, w_index: u16, w_length: u16) -> (i32, Vec<u8>) {
+    pub fn control_in(
+        &self,
+        bm_request_type: u8,
+        b_request: u8,
+        w_value: u16,
+        w_index: u16,
+        w_length: u16,
+    ) -> (i32, Vec<u8>) {
         let (control_type, recipient) = decompose(bm_request_type);
         let r = self
             .device
@@ -73,14 +80,24 @@ impl UsbHandle {
         match r {
             Ok(data) => (data.len() as i32, data),
             Err(e) => {
-                eprintln!("{}: control IN 0x{b_request:02x} failed: {e}", self.debug_label);
+                eprintln!(
+                    "{}: control IN 0x{b_request:02x} failed: {e}",
+                    self.debug_label
+                );
                 (-1, Vec::new())
             }
         }
     }
 
     /// OUT control transfer; returns status.
-    pub fn control_out(&self, bm_request_type: u8, b_request: u8, w_value: u16, w_index: u16, data: &[u8]) -> i32 {
+    pub fn control_out(
+        &self,
+        bm_request_type: u8,
+        b_request: u8,
+        w_value: u16,
+        w_index: u16,
+        data: &[u8],
+    ) -> i32 {
         let (control_type, recipient) = decompose(bm_request_type);
         let r = self
             .device
@@ -99,7 +116,10 @@ impl UsbHandle {
         match r {
             Ok(()) => data.len() as i32,
             Err(e) => {
-                eprintln!("{}: control OUT 0x{b_request:02x} failed: {e}", self.debug_label);
+                eprintln!(
+                    "{}: control OUT 0x{b_request:02x} failed: {e}",
+                    self.debug_label
+                );
                 -1
             }
         }
@@ -118,7 +138,12 @@ impl UsbHandle {
 
 /// controlTransfer / enterBootloader WS passthrough
 /// (usb.cpp USB_device::processMessage). Shared by CEE, M1K, bootloader.
-pub fn handle_usb_message(handle: &UsbHandle, client: &ClientHandle, cmd: &str, n: &Value) -> Result<bool> {
+pub fn handle_usb_message(
+    handle: &UsbHandle,
+    client: &ClientHandle,
+    cmd: &str,
+    n: &Value,
+) -> Result<bool> {
     match cmd {
         "controlTransfer" => {
             let id = json_int_prop_def(n, "id", 0);
@@ -137,13 +162,21 @@ pub fn handle_usb_message(handle: &UsbHandle, client: &ClientHandle, cmd: &str, 
             if is_in {
                 let mut w_length = json_int_prop_def(n, "wLength", 64);
                 w_length = w_length.clamp(0, 64);
-                let (r, data) = handle.control_in(bm_request_type, b_request, w_value, w_index, w_length as u16);
+                let (r, data) = handle.control_in(
+                    bm_request_type,
+                    b_request,
+                    w_value,
+                    w_index,
+                    w_length as u16,
+                );
                 ret = r;
                 if r >= 0 {
                     reply.insert("data".into(), json!(data));
                 }
             } else {
-                let data = n.get("data").ok_or_else(|| Error::new("JSON missing property: data"))?;
+                let data = n
+                    .get("data")
+                    .ok_or_else(|| Error::new("JSON missing property: data"))?;
                 let bytes: Vec<u8> = match data {
                     Value::Array(a) => a
                         .iter()
@@ -173,7 +206,12 @@ pub fn handle_usb_message(handle: &UsbHandle, client: &ClientHandle, cmd: &str, 
 
 /// USB passthrough for streaming devices (extracts the handle from the
 /// backend).
-pub fn process_usb_message(dev: &mut StreamingDevice, client: &ClientHandle, cmd: &str, n: &Value) -> Result<bool> {
+pub fn process_usb_message(
+    dev: &mut StreamingDevice,
+    client: &ClientHandle,
+    cmd: &str,
+    n: &Value,
+) -> Result<bool> {
     let handle = match &dev.backend {
         Backend::M1k(b) => b.handle.clone(),
         Backend::Cee(b) => b.handle.clone(),
@@ -220,7 +258,11 @@ pub fn start(state: Arc<ServerState>) {
     });
 }
 
-async fn device_added(state: &Arc<ServerState>, active: &mut HashMap<nusb::DeviceId, DevicePtr>, info: nusb::DeviceInfo) {
+async fn device_added(
+    state: &Arc<ServerState>,
+    active: &mut HashMap<nusb::DeviceId, DevicePtr>,
+    info: nusb::DeviceInfo,
+) {
     let vid = info.vendor_id();
     let pid = info.product_id();
 
@@ -252,7 +294,10 @@ async fn device_added(state: &Arc<ServerState>, active: &mut HashMap<nusb::Devic
 
     let dev_ptr: DevicePtr = match kind {
         "m1k" => {
-            let handle = UsbHandle { device, debug_label: "M1K" };
+            let handle = UsbHandle {
+                device,
+                debug_label: "M1K",
+            };
             match m1k::create(handle, serial) {
                 Ok(d) => d,
                 Err(e) => {
@@ -262,7 +307,10 @@ async fn device_added(state: &Arc<ServerState>, active: &mut HashMap<nusb::Devic
             }
         }
         "cee" => {
-            let handle = UsbHandle { device, debug_label: "CEE" };
+            let handle = UsbHandle {
+                device,
+                debug_label: "CEE",
+            };
             match cee::create(handle, serial) {
                 Ok(d) => d,
                 Err(e) => {
@@ -272,7 +320,10 @@ async fn device_added(state: &Arc<ServerState>, active: &mut HashMap<nusb::Devic
             }
         }
         _ => {
-            let handle = UsbHandle { device, debug_label: "bootloader" };
+            let handle = UsbHandle {
+                device,
+                debug_label: "bootloader",
+            };
             let d = bootloader::BootloaderDevice::new(handle, serial);
             Arc::new(Mutex::new(AnyDevice::Bootloader(d)))
         }

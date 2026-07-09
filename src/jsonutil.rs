@@ -113,17 +113,22 @@ pub fn fmt_g(v: f32) -> String {
     if rounded.abs().log10().floor() as i32 != exp && rounded != 0.0 {
         exp = rounded.abs().log10().floor() as i32;
     }
-    if exp < -4 || exp >= PREC {
+    if !(-4..PREC).contains(&exp) {
         // Scientific notation, PREC-1 fractional digits, trailing zeros stripped
         let s = format!("{:.*e}", (PREC - 1) as usize, v);
         // Rust: "2.5e0"; C++: "2.5e+00"
         let (mantissa, e) = s.split_once('e').unwrap();
         let mantissa = strip_trailing_zeros(mantissa);
         let eval: i32 = e.parse().unwrap();
-        format!("{}e{}{:02}", mantissa, if eval < 0 { '-' } else { '+' }, eval.abs())
+        format!(
+            "{}e{}{:02}",
+            mantissa,
+            if eval < 0 { '-' } else { '+' },
+            eval.abs()
+        )
     } else {
         let decimals = (PREC - 1 - exp).max(0) as usize;
-        let s = format!("{:.*}", decimals, v);
+        let s = format!("{v:.decimals$}");
         strip_trailing_zeros(&s)
     }
 }
@@ -149,7 +154,7 @@ mod tests {
         assert_eq!(fmt_g(2.5), "2.5");
         assert_eq!(fmt_g(-2.5), "-2.5");
         assert_eq!(fmt_g(0.5), "0.5");
-        assert_eq!(fmt_g(3.14159), "3.14159");
+        assert_eq!(fmt_g(2.34567), "2.34567");
         assert_eq!(fmt_g(123456.0), "123456");
         assert_eq!(fmt_g(1234567.0), "1.23457e+06");
         assert_eq!(fmt_g(1e6), "1e+06");
@@ -170,7 +175,7 @@ mod tests {
         assert_eq!(json_int_prop(&n, "f").unwrap(), 2);
         assert_eq!(json_float_prop(&n, "f").unwrap(), 2.5);
         assert!(json_bool_prop(&n, "s").is_err());
-        assert_eq!(json_bool_prop(&n, "b").unwrap(), true);
+        assert!(json_bool_prop(&n, "b").unwrap());
         assert_eq!(
             json_string_prop(&n, "nope").unwrap_err().0,
             "JSON missing string property: nope"

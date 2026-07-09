@@ -79,6 +79,7 @@ impl Default for M1kCal {
 }
 
 impl M1kCal {
+    #[allow(clippy::wrong_self_convention)] // serializer, not a conversion
     fn to_bytes(&self) -> Vec<u8> {
         let mut b = Vec::with_capacity(100);
         b.extend_from_slice(&EEPROM_VALID.to_le_bytes());
@@ -204,8 +205,14 @@ pub fn create(handle: UsbHandle, serial: String) -> std::result::Result<DevicePt
         led_state: 0,
         fw_interleaved,
         frontend: [
-            Frontend { feedback: true, ..Default::default() },
-            Frontend { feedback: true, ..Default::default() },
+            Frontend {
+                feedback: true,
+                ..Default::default()
+            },
+            Frontend {
+                feedback: true,
+                ..Default::default()
+            },
         ],
         packets_per_transfer: 1,
         lead_baseline: None,
@@ -243,7 +250,14 @@ pub fn create(handle: UsbHandle, serial: String) -> std::result::Result<DevicePt
     Ok(Arc::new(Mutex::new(AnyDevice::Streaming(dev))))
 }
 
-pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples: u32, continuous: bool, raw: bool) {
+pub fn configure(
+    dev: &mut StreamingDevice,
+    mode: i32,
+    sample_time: f64,
+    samples: u32,
+    continuous: bool,
+    raw: bool,
+) {
     // Timer period: a sample takes 2 timer ticks (A/B ADC phases)
     let mut per = (sample_time * TIMER_CLOCK).round() / 2.0;
     per = per.clamp(MIN_PER, MAX_PER);
@@ -263,7 +277,8 @@ pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples
     dev.capture_i = 0;
     dev.capture_o = 0;
 
-    let ppt = (BUFFER_TIME / (dev.sample_time * CHUNK_SIZE as f64) / N_TRANSFERS as f64).ceil() as usize;
+    let ppt =
+        (BUFFER_TIME / (dev.sample_time * CHUNK_SIZE as f64) / N_TRANSFERS as f64).ceil() as usize;
     let sample_time = dev.sample_time;
     {
         let b = bm(dev);
@@ -286,13 +301,49 @@ pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples
         c.source = Some(OutputSource::constant(0, 0.0));
         let (mut v, mut i) = if raw {
             (
-                Stream::new("v", &format!("Voltage {cname}"), "LSB", 0.0, 65535.0, 1, V_RESOLUTION as f32, 1),
-                Stream::new("i", &format!("Current {cname}"), "LSB", 0.0, 65535.0, 2, (I_RESOLUTION * 1000.0) as f32, 1),
+                Stream::new(
+                    "v",
+                    &format!("Voltage {cname}"),
+                    "LSB",
+                    0.0,
+                    65535.0,
+                    1,
+                    V_RESOLUTION as f32,
+                    1,
+                ),
+                Stream::new(
+                    "i",
+                    &format!("Current {cname}"),
+                    "LSB",
+                    0.0,
+                    65535.0,
+                    2,
+                    (I_RESOLUTION * 1000.0) as f32,
+                    1,
+                ),
             )
         } else {
             (
-                Stream::new("v", &format!("Voltage {cname}"), "V", V_MIN, V_MAX, 1, V_RESOLUTION as f32, 1),
-                Stream::new("i", &format!("Current {cname}"), "mA", I_MIN, I_MAX, 2, (I_RESOLUTION * 1000.0) as f32, 1),
+                Stream::new(
+                    "v",
+                    &format!("Voltage {cname}"),
+                    "V",
+                    V_MIN,
+                    V_MAX,
+                    1,
+                    V_RESOLUTION as f32,
+                    1,
+                ),
+                Stream::new(
+                    "i",
+                    &format!("Current {cname}"),
+                    "mA",
+                    I_MIN,
+                    I_MAX,
+                    2,
+                    (I_RESOLUTION * 1000.0) as f32,
+                    1,
+                ),
             )
         };
         v.allocate(samples);
@@ -307,7 +358,14 @@ pub fn configure(dev: &mut StreamingDevice, mode: i32, sample_time: f64, samples
 pub fn state_extras(dev: &StreamingDevice, n: &mut Map<String, Value>) {
     let b = be(dev);
     n.insert("frontend".into(), frontend_to_json(b));
-    const MODE_NAMES: [&str; 6] = ["hi_z", "svmi", "simv", "hi_z_split", "svmi_split", "simv_split"];
+    const MODE_NAMES: [&str; 6] = [
+        "hi_z",
+        "svmi",
+        "simv",
+        "hi_z_split",
+        "svmi_split",
+        "simv_split",
+    ];
     n.insert(
         "m1k_modes".into(),
         json!({
@@ -329,10 +387,12 @@ impl M1kBackend {
         };
 
         // Set feedback potentiometers
-        self.handle.control_out(0x40, 0x59, channel as u16, pset, &[]);
+        self.handle
+            .control_out(0x40, 0x59, channel as u16, pset, &[]);
 
         // Set mode (firmware only understands 0/1/2)
-        self.handle.control_out(0x40, 0x53, channel as u16, (mode % 3) as u16, &[]);
+        self.handle
+            .control_out(0x40, 0x53, channel as u16, (mode % 3) as u16, &[]);
 
         // Set SPLIT pin for split modes
         if split {
@@ -348,43 +408,66 @@ impl M1kBackend {
         fe.feedback = true; // firmware always clears feedback pin (active LOW = on)
         fe.output_en = base_mode != 0;
         fe.split = split;
-        fe.pot_r1 = (pset >> 8) as u8 & 0xFF;
+        fe.pot_r1 = (pset >> 8) as u8;
         fe.pot_r2 = (pset & 0xFF) as u8;
     }
 
     fn set_gpio(&self, pin: u16, high: bool) {
-        self.handle.control_out(0x40, if high { 0x51 } else { 0x50 }, pin, 0, &[]);
+        self.handle
+            .control_out(0x40, if high { 0x51 } else { 0x50 }, pin, 0, &[]);
     }
 
     fn set_digipot(&mut self, channel: usize, r1: u8, r2: u8) {
-        self.handle
-            .control_out(0x40, 0x59, channel as u16, ((r1 as u16) << 8) | r2 as u16, &[]);
+        self.handle.control_out(
+            0x40,
+            0x59,
+            channel as u16,
+            ((r1 as u16) << 8) | r2 as u16,
+            &[],
+        );
         self.frontend[channel].pot_r1 = r1;
         self.frontend[channel].pot_r2 = r2;
     }
 
     fn set_leds(&mut self, state: u8) {
         self.led_state = state & 0x7;
-        self.handle.control_out(0x40, 0x03, self.led_state as u16, 0, &[]);
+        self.handle
+            .control_out(0x40, 0x03, self.led_state as u16, 0, &[]);
     }
 
     fn set_frontend_switch(&mut self, ch: usize, name: &str, val: bool) {
         let pin = match name {
             "r50_2v5" => {
                 self.frontend[ch].r50_2v5 = val;
-                if ch == 0 { CHA_50R_2V5 } else { CHB_50R_2V5 }
+                if ch == 0 {
+                    CHA_50R_2V5
+                } else {
+                    CHB_50R_2V5
+                }
             }
             "r50_gnd" => {
                 self.frontend[ch].r50_gnd = val;
-                if ch == 0 { CHA_50R_GND } else { CHB_50R_GND }
+                if ch == 0 {
+                    CHA_50R_GND
+                } else {
+                    CHB_50R_GND
+                }
             }
             "feedback" => {
                 self.frontend[ch].feedback = val;
-                if ch == 0 { CHA_FEEDBACK } else { CHB_FEEDBACK }
+                if ch == 0 {
+                    CHA_FEEDBACK
+                } else {
+                    CHB_FEEDBACK
+                }
             }
             "output_en" => {
                 self.frontend[ch].output_en = val;
-                if ch == 0 { CHA_OUTPUT_EN } else { CHB_OUTPUT_EN }
+                if ch == 0 {
+                    CHA_OUTPUT_EN
+                } else {
+                    CHB_OUTPUT_EN
+                }
             }
             "split" => {
                 self.frontend[ch].split = val;
@@ -514,7 +597,9 @@ pub fn on_start_capture(dev: &mut StreamingDevice) {
         tasks.push(tokio::spawn(async move {
             let mut ep = ep_out;
             for _ in 0..N_TRANSFERS {
-                let Some(dev) = self_ref.upgrade() else { return };
+                let Some(dev) = self_ref.upgrade() else {
+                    return;
+                };
                 let data = {
                     let mut dev = dev.lock().unwrap();
                     match &mut *dev {
@@ -578,7 +663,11 @@ pub fn on_pause_capture(dev: &mut StreamingDevice) {
 }
 
 pub fn on_set_output(dev: &mut StreamingDevice, chan: usize) {
-    let mode = dev.channels[chan].source.as_ref().map(|s| s.mode).unwrap_or(0);
+    let mode = dev.channels[chan]
+        .source
+        .as_ref()
+        .map(|s| s.mode)
+        .unwrap_or(0);
     let capture_state = dev.capture_state;
     let b = bm(dev);
     if b.m_mode[chan] != mode {
@@ -631,18 +720,42 @@ fn handle_in_transfer(dev: &mut StreamingDevice, buffer: &[u8]) {
                 dev.put(1, 1, raw_bi as f32);
             } else {
                 let v = raw_av as f64 * V_RESOLUTION;
-                dev.put(0, 0, ((v - cal.offset[0] as f64) * cal.gain_p[0] as f64) as f32);
+                dev.put(
+                    0,
+                    0,
+                    ((v - cal.offset[0] as f64) * cal.gain_p[0] as f64) as f32,
+                );
 
                 let v = (raw_ai as f64 * I_RESOLUTION - 0.195) * 1.25;
-                let g = if v > 0.0 { cal.gain_p[1] } else { cal.gain_n[1] };
-                dev.put(0, 1, ((v - cal.offset[1] as f64) * g as f64 * 1000.0) as f32);
+                let g = if v > 0.0 {
+                    cal.gain_p[1]
+                } else {
+                    cal.gain_n[1]
+                };
+                dev.put(
+                    0,
+                    1,
+                    ((v - cal.offset[1] as f64) * g as f64 * 1000.0) as f32,
+                );
 
                 let v = raw_bv as f64 * V_RESOLUTION;
-                dev.put(1, 0, ((v - cal.offset[4] as f64) * cal.gain_p[4] as f64) as f32);
+                dev.put(
+                    1,
+                    0,
+                    ((v - cal.offset[4] as f64) * cal.gain_p[4] as f64) as f32,
+                );
 
                 let v = (raw_bi as f64 * I_RESOLUTION - 0.195) * 1.25;
-                let g = if v > 0.0 { cal.gain_p[5] } else { cal.gain_n[5] };
-                dev.put(1, 1, ((v - cal.offset[5] as f64) * g as f64 * 1000.0) as f32);
+                let g = if v > 0.0 {
+                    cal.gain_p[5]
+                } else {
+                    cal.gain_n[5]
+                };
+                dev.put(
+                    1,
+                    1,
+                    ((v - cal.offset[5] as f64) * g as f64 * 1000.0) as f32,
+                );
             }
 
             dev.sample_done();
@@ -706,7 +819,11 @@ fn encode_out(mode: u32, cal: &M1kCal, raw_mode: bool, channel: usize, val: f32)
     } else if mode == SIMV || mode == SIMV_SPLIT {
         // val is in mA, convert to A for encoding
         let mut val_a = val / 1000.0;
-        let g = if val_a > 0.0 { cal.gain_p[channel * 4 + 3] } else { cal.gain_n[channel * 4 + 3] };
+        let g = if val_a > 0.0 {
+            cal.gain_p[channel * 4 + 3]
+        } else {
+            cal.gain_n[channel * 4 + 3]
+        };
         val_a = (val_a - cal.offset[channel * 4 + 3]) * g;
         val_a = val_a.clamp(-0.2, 0.2);
         v = (65536.0 * (2.0 / 5.0 + 0.8 * 0.2 * 20.0 * 0.5 * val_a as f64)) as i32;
@@ -727,13 +844,24 @@ fn fill_out_transfer(dev: &mut StreamingDevice) -> Vec<u8> {
     let osize = OUT_PACKET_SIZE * ppt;
     let mut buf = vec![0u8; osize];
 
-    if dev.channels.len() == 2 && dev.channels[0].source.is_some() && dev.channels[1].source.is_some() {
+    if dev.channels.len() == 2
+        && dev.channels[0].source.is_some()
+        && dev.channels[1].source.is_some()
+    {
         let mut o = dev.capture_o;
         for p in 0..ppt {
             let pkt = p * OUT_PACKET_SIZE;
             for i in 0..CHUNK_SIZE {
-                let av = dev.channels[0].source.as_mut().unwrap().get_value(o, sample_time);
-                let bv = dev.channels[1].source.as_mut().unwrap().get_value(o, sample_time);
+                let av = dev.channels[0]
+                    .source
+                    .as_mut()
+                    .unwrap()
+                    .get_value(o, sample_time);
+                let bv = dev.channels[1]
+                    .source
+                    .as_mut()
+                    .unwrap()
+                    .get_value(o, sample_time);
                 let a = encode_out(m_mode[0], &cal, raw_mode, 0, av);
                 let b = encode_out(m_mode[1], &cal, raw_mode, 1, bv);
 
@@ -788,7 +916,11 @@ fn read_power(dev: &StreamingDevice) -> Value {
     let (r, buf) = b.handle.control_in(0xC0, 0x17, 0, 3, 3);
     if r >= 1 {
         // Alert bit position depends on firmware version (string compare)
-        let alert_bit: u8 = if dev.fw_version.as_str() >= "2.11" { 0x8 } else { 0x4 };
+        let alert_bit: u8 = if dev.fw_version.as_str() >= "2.11" {
+            0x8
+        } else {
+            0x4
+        };
         json!({
             "status_raw": buf[0],
             "alert_bit": alert_bit,
@@ -831,7 +963,9 @@ fn write_serial(dev: &mut StreamingDevice, new_serial: &str) -> i32 {
     if new_serial.is_empty() || new_serial.len() > 32 {
         return -1;
     }
-    be(dev).handle.control_out(0x40, 0x05, 0, 0, new_serial.as_bytes())
+    be(dev)
+        .handle
+        .control_out(0x40, 0x05, 0, 0, new_serial.as_bytes())
 }
 
 fn apply_frontend_json(dev: &mut StreamingDevice, ch: usize, n: &Value) {
@@ -844,8 +978,16 @@ fn apply_frontend_json(dev: &mut StreamingDevice, ch: usize, n: &Value) {
     let pot_r1 = json_int_prop_def(n, "pot_r1", -1);
     let pot_r2 = json_int_prop_def(n, "pot_r2", -1);
     if pot_r1 >= 0 || pot_r2 >= 0 {
-        let r1 = if pot_r1 >= 0 { (pot_r1 & 0x7f) as u8 } else { b.frontend[ch].pot_r1 };
-        let r2 = if pot_r2 >= 0 { (pot_r2 & 0x7f) as u8 } else { b.frontend[ch].pot_r2 };
+        let r1 = if pot_r1 >= 0 {
+            (pot_r1 & 0x7f) as u8
+        } else {
+            b.frontend[ch].pot_r1
+        };
+        let r2 = if pot_r2 >= 0 {
+            (pot_r2 & 0x7f) as u8
+        } else {
+            b.frontend[ch].pot_r2
+        };
         b.set_digipot(ch, r1, r2);
     }
 }
@@ -862,7 +1004,12 @@ fn ret(id: i64, extra: &[(&str, Value)]) -> Value {
 
 // ---- WS commands (m1k.cpp processMessage) ----
 
-pub fn process_message(dev: &mut StreamingDevice, client: &ClientHandle, cmd: &str, n: &Value) -> Result<bool> {
+pub fn process_message(
+    dev: &mut StreamingDevice,
+    client: &ClientHandle,
+    cmd: &str,
+    n: &Value,
+) -> Result<bool> {
     let id = json_int_prop_def(n, "id", 0);
     match cmd {
         "readCalibration" => {
@@ -885,8 +1032,8 @@ pub fn process_message(dev: &mut StreamingDevice, client: &ClientHandle, cmd: &s
                     .and_then(|v| v.as_array())
                     .ok_or_else(|| Error(format!("JSON missing property: {name}")))?;
                 let mut out = [0.0f32; 8];
-                for i in 0..8 {
-                    out[i] = a.get(i).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                for (i, o) in out.iter_mut().enumerate() {
+                    *o = a.get(i).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                 }
                 Ok(out)
             };
@@ -957,7 +1104,11 @@ fn set_leds_json(dev: &mut StreamingDevice, n: &Value) {
 
 // ---- REST endpoints (m1k.cpp handleREST) ----
 
-pub fn handle_rest(dev: &mut StreamingDevice, req: &RestRequest, level: usize) -> Option<RestResponse> {
+pub fn handle_rest(
+    dev: &mut StreamingDevice,
+    req: &RestRequest,
+    level: usize,
+) -> Option<RestResponse> {
     let seg = req.parts.get(level).map(|s| s.as_str()).unwrap_or("");
     match seg {
         "frontend" => Some(if req.method == "POST" {
@@ -1043,7 +1194,8 @@ pub fn handle_rest(dev: &mut StreamingDevice, req: &RestRequest, level: usize) -
 }
 
 fn rest_calibration_post(dev: &mut StreamingDevice, body: &str) -> Result<RestResponse> {
-    let n: Value = serde_json::from_str(body).map_err(|e| Error(format!("JSON parse error: {e}")))?;
+    let n: Value =
+        serde_json::from_str(body).map_err(|e| Error(format!("JSON parse error: {e}")))?;
 
     if n.get("reset").and_then(|v| v.as_bool()).unwrap_or(false) {
         let b = bm(dev);
@@ -1057,8 +1209,8 @@ fn rest_calibration_post(dev: &mut StreamingDevice, body: &str) -> Result<RestRe
                 .and_then(|v| v.as_array())
                 .ok_or_else(|| Error(format!("JSON missing property: {name}")))?;
             let mut out = [0.0f32; 8];
-            for i in 0..8 {
-                out[i] = a.get(i).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            for (i, o) in out.iter_mut().enumerate() {
+                *o = a.get(i).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
             }
             Ok(out)
         };
@@ -1083,10 +1235,10 @@ mod tests {
     fn timer_period_math() {
         // per = round(st*48e6)/2 clamped [240, 24000]; st = 2*per/48e6
         let cases = [
-            (1e-5, 240.0, 1e-5),          // 100 ksps exactly
-            (1e-6, 240.0, 1e-5),          // clamped to min
-            (1.0, 24000.0, 1e-3),         // clamped to max
-            (2.5e-5, 600.0, 2.5e-5),      // exact
+            (1e-5, 240.0, 1e-5),     // 100 ksps exactly
+            (1e-6, 240.0, 1e-5),     // clamped to min
+            (1.0, 24000.0, 1e-3),    // clamped to max
+            (2.5e-5, 600.0, 2.5e-5), // exact
         ];
         for (st, want_per, want_st) in cases {
             let mut per = (st * TIMER_CLOCK).round() / 2.0;
@@ -1105,12 +1257,24 @@ mod tests {
         // SVMI: v = val * 65536/5
         assert_eq!(encode_out(SVMI, &cal, false, 0, 0.0), 0);
         assert_eq!(encode_out(SVMI, &cal, false, 0, 5.0), 65535);
-        assert_eq!(encode_out(SVMI, &cal, false, 0, 2.5), (2.5 * 65536.0 / 5.0) as u16);
+        assert_eq!(
+            encode_out(SVMI, &cal, false, 0, 2.5),
+            (2.5 * 65536.0 / 5.0) as u16
+        );
         // SIMV: v = 65536 * (0.4 + 1.6 * amps); val in mA
-        assert_eq!(encode_out(SIMV, &cal, false, 0, 0.0), (65536.0 * 0.4) as u16);
-        assert_eq!(encode_out(SIMV, &cal, false, 0, 100.0), (65536.0 * (0.4 + 1.6 * 0.1)) as u16);
-        assert_eq!(encode_out(SIMV, &cal, false, 0, -300.0), (65536.0 * (0.4 - 1.6 * 0.2)) as u16); // clamped ±0.2 A
-        // raw passthrough
+        assert_eq!(
+            encode_out(SIMV, &cal, false, 0, 0.0),
+            (65536.0 * 0.4) as u16
+        );
+        assert_eq!(
+            encode_out(SIMV, &cal, false, 0, 100.0),
+            (65536.0 * (0.4 + 1.6 * 0.1)) as u16
+        );
+        assert_eq!(
+            encode_out(SIMV, &cal, false, 0, -300.0),
+            (65536.0 * (0.4 - 1.6 * 0.2)) as u16
+        ); // clamped ±0.2 A
+           // raw passthrough
         assert_eq!(encode_out(SVMI, &cal, true, 0, 1234.0), 1234);
         assert_eq!(encode_out(SVMI, &cal, true, 0, 99999.0), 65535);
     }
@@ -1144,7 +1308,10 @@ mod tests {
         cal.gain_n[0] = 0.5;
         let bytes = cal.to_bytes();
         assert_eq!(bytes.len(), 100);
-        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), EEPROM_VALID);
+        assert_eq!(
+            u32::from_le_bytes(bytes[0..4].try_into().unwrap()),
+            EEPROM_VALID
+        );
         let back = M1kCal::from_bytes(&bytes).unwrap();
         assert!(back.valid);
         assert_eq!(back.offset[3], 0.25);

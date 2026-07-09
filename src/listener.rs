@@ -151,11 +151,17 @@ impl Listener {
             let will_be_done = self.count > 0 && (self.out_index + nchunks) as i64 >= self.count;
 
             match &self.sink {
-                Sink::Ws { client, binary: true } => {
+                Sink::Ws {
+                    client,
+                    binary: true,
+                } => {
                     let buf = self.binary_frame(dev, nchunks, will_be_done);
                     client.send_binary(buf);
                 }
-                Sink::Ws { client, binary: false } => {
+                Sink::Ws {
+                    client,
+                    binary: false,
+                } => {
                     let msg = self.json_update(dev, nchunks, will_be_done);
                     client.send_json(msg);
                 }
@@ -243,7 +249,12 @@ impl Listener {
         let mut off = HEADER;
         for &(c, s) in &self.streams {
             for chunk in 0..nchunks {
-                let v = dev.resample(c, s, self.index + chunk * self.decimate_factor, self.decimate_factor);
+                let v = dev.resample(
+                    c,
+                    s,
+                    self.index + chunk * self.decimate_factor,
+                    self.decimate_factor,
+                );
                 buf[off..off + 4].copy_from_slice(&v.to_le_bytes());
                 off += 4;
             }
@@ -292,7 +303,11 @@ impl Listener {
 }
 
 /// Build a listener from a WS `listen` command (makeStreamListener).
-pub fn make_stream_listener(dev: &StreamingDevice, client: &ClientHandle, n: &Value) -> Result<Listener> {
+pub fn make_stream_listener(
+    dev: &StreamingDevice,
+    client: &ClientHandle,
+    n: &Value,
+) -> Result<Listener> {
     let mut l = new_listener(Sink::Ws {
         client: client.clone(),
         binary: json_bool_prop_def(n, "binary", false),
@@ -313,8 +328,10 @@ pub fn make_stream_listener(dev: &StreamingDevice, client: &ClientHandle, n: &Va
         .and_then(|v| v.as_array())
         .ok_or_else(|| Error::new("JSON missing property: streams"))?;
     for i in streams {
-        l.streams
-            .push(dev.find_stream(&json_string_prop(i, "channel")?, &json_string_prop(i, "stream")?)?);
+        l.streams.push(dev.find_stream(
+            &json_string_prop(i, "channel")?,
+            &json_string_prop(i, "stream")?,
+        )?);
     }
 
     if let Some(trigger) = n.get("trigger").filter(|t| t.is_object()) {
@@ -363,7 +380,9 @@ pub fn make_rest_listener(
     count: i64,
 ) -> Listener {
     let mut l = new_listener(Sink::Rest { tx });
-    l.streams = (0..dev.channels[channel].streams.len()).map(|s| (channel, s)).collect();
+    l.streams = (0..dev.channels[channel].streams.len())
+        .map(|s| (channel, s))
+        .collect();
     l.decimate_factor = decimate_factor.max(1);
     l.index = resolve_start(dev, start);
     l.count = count;
@@ -411,10 +430,10 @@ fn new_listener(sink: Sink) -> Listener {
 mod tests {
     use super::*;
     use crate::device::OutMsg;
-    use crate::streaming::test_util::*;
     use crate::streaming::make_test_device;
+    use crate::streaming::test_util::*;
 
-    fn drain(rx: &mut mpsc::UnboundedReceiver<OutMsg>) -> (Vec<Value>, Vec<Vec<u8>>) {
+    fn drain(rx: &mut crate::device::ClientReceiver) -> (Vec<Value>, Vec<Vec<u8>>) {
         let mut json = Vec::new();
         let mut bin = Vec::new();
         while let Ok(m) = rx.try_recv() {
@@ -535,7 +554,8 @@ mod tests {
         }
         assert_eq!(dev.listeners.len(), 1);
 
-        dev.process_message(&client, "cancelListen", &json!({"id": 1})).unwrap();
+        dev.process_message(&client, "cancelListen", &json!({"id": 1}))
+            .unwrap();
         assert!(dev.listeners.is_empty());
     }
 
@@ -724,7 +744,10 @@ mod tests {
         // Two rising edges through 2.5 with enough data after each.
         // (The scan starts at index 1 — the C++ pre-increments before any
         // data exists — so the edges must land at sample >= 2.)
-        feed(&mut dev, &[0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0]);
+        feed(
+            &mut dev,
+            &[0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0],
+        );
         let (msgs, _) = drain(&mut rx);
         let ups = updates(&msgs);
         assert_eq!(ups.len(), 2, "{ups:?}");

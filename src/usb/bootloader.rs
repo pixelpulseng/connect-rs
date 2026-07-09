@@ -17,7 +17,7 @@ const REQ_RESET: u8 = 0xBF;
 
 #[derive(Default, Clone)]
 pub struct BootloaderInfo {
-    pub magic: u32,      // stored big-endian-rendered like the C++ ntohl
+    pub magic: u32, // stored big-endian-rendered like the C++ ntohl
     pub version: u8,
     pub devid: u32,
     pub page_size: u16,
@@ -112,7 +112,11 @@ impl BootloaderDevice {
             }
         };
         self.handle.control_in(0xC0, REQ_START_WRITE, 0, 0, 0);
-        println!("Starting bootloader write {} {}", self.info.page_size, data.len());
+        println!(
+            "Starting bootloader write {} {}",
+            self.info.page_size,
+            data.len()
+        );
 
         let mut ep = match interface.endpoint::<Bulk, Out>(0x01) {
             Ok(e) => e,
@@ -147,8 +151,8 @@ impl BootloaderDevice {
             "write" => {
                 // `data` is base64 (libjson's as_binary decoded base64)
                 let data_str = json_string_prop(n, "data")?;
-                let data = base64_decode(&data_str)
-                    .ok_or_else(|| Error::new("Invalid base64 data"))?;
+                let data =
+                    base64_decode(&data_str).ok_or_else(|| Error::new("Invalid base64 data"))?;
                 let r = self.write(&data);
                 client.send_json(json!({"_action": "return", "id": id, "result": r}));
             }
@@ -181,7 +185,10 @@ pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
             _ => None,
         }
     }
-    let bytes: Vec<u8> = s.bytes().filter(|&b| !b.is_ascii_whitespace() && b != b'=').collect();
+    let bytes: Vec<u8> = s
+        .bytes()
+        .filter(|&b| !b.is_ascii_whitespace() && b != b'=')
+        .collect();
     let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
     for chunk in bytes.chunks(4) {
         let mut acc: u32 = 0;

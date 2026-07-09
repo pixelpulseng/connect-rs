@@ -41,15 +41,29 @@ Differences from the C++ (deliberate, see SPEC.md §9)
 * Everything else — including the 402 error status (Q4), silent unknown WS
   commands (Q6), the non-continuous stale-read window (Q7), no origin check
   on WS upgrades (Q9) — is kept bug-for-bug for client compatibility.
+* **Slow-client backpressure** (new) — binary data frames are dropped for a
+  WebSocket client whose outgoing queue exceeds 8 MiB, instead of growing
+  memory without bound (the C++ had the same unbounded queue via
+  websocketpp). Frames are self-describing (`idx`/`sampleIndex`), so clients
+  tolerate the gap; JSON protocol messages are never dropped.
+* **Graceful shutdown** (new) — Ctrl-C pauses any running captures so
+  devices stop streaming and USB interfaces are released before exit.
 
 Build & test
 ------------
 
     cargo build --release           # binary: target/release/nonolith-connect
     cargo test                      # unit tests (ported from the C++ doctest suite)
-    python3 ../connect/tests/e2e.py target/release/nonolith-connect
+    python3 tests/e2e.py target/release/nonolith-connect
 
-The e2e script is the C++ repository's, unchanged.
+`tests/e2e.py` is a verbatim copy of the C++ repository's e2e script
+(vendored so CI can run it); `../connect/tests/e2e.py` also passes
+unchanged. CI (`.github/workflows/ci.yml`) runs rustfmt, clippy
+(`-D warnings`), the unit tests, and the e2e suite on every push.
+
+The git revision is embedded at build time by `build.rs` (`git describe`);
+set the `GITVERSION` environment variable to override it when building
+without a git checkout.
 
 Command line flags (same as the C++)
 ------------------------------------
