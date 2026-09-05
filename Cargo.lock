@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "nonolith-connect"
-version = "1.3.0"
+version = "0.1.3"
 dependencies = [
  "axum",
  "bytes",

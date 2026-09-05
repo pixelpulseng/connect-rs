@@ -1,16 +1,20 @@
 Nonolith Connect (Rust port)
 ============================
 
-Async-first Rust port of [nonolith-connect](../connect): a background daemon
+Async-first Rust port of
+[nonolith-connect](https://github.com/i-infra/connect): a background daemon
 that owns USB communication with Nonolith CEE and Analog Devices ADALM1000
 ("M1K") source-measure units and exposes them to multiple simultaneous
 clients over REST (`/rest/v1/...`) and WebSocket (`/ws/v0`) on
-`localhost:9003`. The primary client is [Pixelpulse](../pixelpulse).
+`localhost:9003`. The primary client is
+[Pixelpulse](https://github.com/pixelpulseng/pixelpulse).
 
-The behavioral reference is **`../connect/SPEC.md`**; the C++ test suite
-(`../connect/tests/`) is the executable spec this port was written against.
+The behavioral reference is
+[**SPEC.md**](https://github.com/i-infra/connect/blob/master/SPEC.md); the
+[C++ test suite](https://github.com/i-infra/connect/tree/master/tests) is
+the executable spec this port was written against.
 
-Licensed under the GNU GPLv3+, like the original.
+Licensed under the GNU GPLv3+ (see COPYING), like the original.
 
 Architecture
 ------------
@@ -57,7 +61,7 @@ Build & test
     python3 tests/e2e.py target/release/nonolith-connect
 
 `tests/e2e.py` is a verbatim copy of the C++ repository's e2e script
-(vendored so CI can run it); `../connect/tests/e2e.py` also passes
+(vendored so CI can run it); the C++ repo's `tests/e2e.py` also passes
 unchanged. CI (`.github/workflows/ci.yml`) runs rustfmt, clippy
 (`-D warnings`), the unit tests, and the e2e suite on every push.
 

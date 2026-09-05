@@ -1,9 +1,13 @@
 [package]
 name = "nonolith-connect"
-version = "1.3.0"
+version = "0.1.3"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Rust port of Nonolith Connect: REST/WebSocket dataserver for CEE and ADALM1000 (M1K) source-measure units"
+repository = "https://github.com/pixelpulseng/connect-rs"
+readme = "README.md"
+keywords = ["adalm1000", "smu", "instrumentation", "usb", "websocket"]
+categories = ["science", "hardware-support"]
 
 [lib]
 name = "connect"

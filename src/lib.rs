@@ -1,8 +1,8 @@
 // Nonolith Connect — Rust port
 // GPLv3+; original C++ (C) 2012 Nonolith Labs, LLC
 //
-// See SPEC.md in the C++ repository (../connect) for the behavioral
-// specification this port implements.
+// See SPEC.md in the C++ repository for the behavioral specification this
+// port implements: https://github.com/i-infra/connect/blob/master/SPEC.md
 
 pub mod device;
 pub mod jsonutil;
