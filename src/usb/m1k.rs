@@ -284,6 +284,9 @@ pub fn configure(
         let b = bm(dev);
         b.m1k_per = per as u32;
         b.packets_per_transfer = ppt.max(1);
+        // Sources are reset to constant 0 in HI_Z below; reset the
+        // requested modes to match
+        b.m_mode = [HI_Z, HI_Z];
     }
 
     eprintln!(
@@ -377,6 +380,13 @@ pub fn state_extras(dev: &StreamingDevice, n: &mut Map<String, Value>) {
 
 impl M1kBackend {
     fn set_mode(&mut self, channel: u32, mode: u32) {
+        self.write_mode(channel, mode);
+        self.m_mode[channel as usize] = mode;
+    }
+
+    /// Program a channel's mode into the hardware without changing the
+    /// requested mode in `m_mode`, which on_start_capture re-applies.
+    fn write_mode(&mut self, channel: u32, mode: u32) {
         let (pset, split): (u16, bool) = match mode {
             SIMV_SPLIT => (0x7f7f, true),
             SIMV => (0x7f7f, false),
@@ -399,8 +409,6 @@ impl M1kBackend {
             let pin = if channel == 0 { CHA_SPLIT } else { CHB_SPLIT };
             self.handle.control_out(0x40, 0x51, pin, 0, &[]);
         }
-
-        self.m_mode[channel as usize] = mode;
 
         // Mirror what firmware set_mode() does to the GPIO pins
         let base_mode = mode % 3;
@@ -649,9 +657,9 @@ pub fn on_pause_capture(dev: &mut StreamingDevice) {
         // Stop sampling
         b.handle.control_out(0x40, 0xC5, 0, 0, &[]);
 
-        // Reset modes to HI_Z
-        b.set_mode(0, HI_Z);
-        b.set_mode(1, HI_Z);
+        // Put the hardware in HI_Z, keeping the requested modes for the next start
+        b.write_mode(0, HI_Z);
+        b.write_mode(1, HI_Z);
 
         for t in b.tasks.drain(..) {
             t.abort();
