@@ -3,8 +3,8 @@
 // Semantics preserved: complete responses carry `Server: Nonolith Connect`,
 // `Content-Type: application/json`, `Connection: close`; streaming CSV
 // responses are chunked text/plain; `GET /` is a 301 to the marketing URL;
-// the origin policy applies to plain HTTP only (SPEC.md Q9 kept — WebSocket
-// upgrades bypass it, matching the C++).
+// the origin policy applies to WebSocket upgrades as well as plain HTTP
+// (SPEC.md Q9 fixed — the C++ let WebSocket upgrades bypass it).
 
 use crate::device::{ClientHandle, OutMsg, ServerState};
 use crate::rest::{handle_json_request, RestBody, RestRequest};
@@ -56,36 +56,49 @@ pub async fn run(state: Arc<ServerState>, port: u16, allow_remote: bool) -> std:
     }
 }
 
+/// Web origins allowed to drive devices. Applies to both plain HTTP and
+/// WebSocket upgrades (SPEC.md Q9 fixed): without it, any page open in the
+/// user's browser could connect to localhost and set outputs, rewrite the
+/// calibration EEPROM, or issue raw USB control transfers.
+///
+/// Requests without an `Origin` header (curl, scripts) are allowed. The
+/// opaque origin `null` (sandboxed iframes, `data:` and `file://` pages) is
+/// not: it can be produced by any page.
 fn origin_allowed(origin: &str) -> bool {
-    if origin.is_empty() || origin == "null" {
+    if origin.is_empty() {
         return true;
     }
     let rest = origin
         .strip_prefix("http://")
         .or_else(|| origin.strip_prefix("https://"));
-    let Some(host) = rest else { return false };
+    let Some(authority) = rest else { return false };
 
-    // ^https?://localhost(:[0-9]+)?$
-    if host == "localhost" {
+    // Loopback dev servers on any port
+    for host in ["localhost", "127.0.0.1", "[::1]"] {
+        if let Some(after) = authority.strip_prefix(host) {
+            match after.strip_prefix(':') {
+                None if after.is_empty() => return true,
+                Some(p) if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) => return true,
+                _ => {}
+            }
+        }
+    }
+
+    // Hosted Pixelpulse
+    if origin == "https://pixelpulseng.github.io" {
         return true;
     }
-    if let Some(p) = host.strip_prefix("localhost:") {
-        if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) {
-            return true;
-        }
-    }
 
-    // ^https?://[\w.-]*?nonolithlabs.com$
-    if let Some(prefix) = host.strip_suffix("nonolithlabs.com") {
-        if prefix
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-')
-        {
-            return true;
-        }
-    }
-
-    false
+    // The original Nonolith Labs apps: nonolithlabs.com or a subdomain of it
+    authority == "nonolithlabs.com"
+        || authority
+            .strip_suffix(".nonolithlabs.com")
+            .is_some_and(|sub| {
+                !sub.is_empty()
+                    && sub
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+            })
 }
 
 async fn handle(State(state): State<Arc<ServerState>>, req: Request) -> Response {
@@ -109,6 +122,12 @@ async fn handle(State(state): State<Arc<ServerState>>, req: Request) -> Response
         .split(['/', '?'])
         .next()
         .unwrap_or("");
+    // Origin policy, checked before the WebSocket upgrade
+    if !state.allow_any_origin && !origin_allowed(&origin) {
+        eprintln!("Rejected client with unknown origin {origin}");
+        return complete(StatusCode::FORBIDDEN, "Origin not allowed", &[]);
+    }
+
     let req = if first_seg == "ws" {
         use axum::extract::FromRequestParts;
         let (mut parts, body) = req.into_parts();
@@ -122,12 +141,6 @@ async fn handle(State(state): State<Arc<ServerState>>, req: Request) -> Response
     } else {
         req
     };
-
-    // Origin policy (HTTP only)
-    if !state.allow_any_origin && !origin_allowed(&origin) {
-        eprintln!("Rejected client with unknown origin {origin}");
-        return complete(StatusCode::FORBIDDEN, "Origin not allowed", &[]);
-    }
 
     if first_seg.is_empty() {
         return complete(
@@ -245,17 +258,26 @@ mod tests {
     #[test]
     fn origin_policy() {
         assert!(origin_allowed(""));
-        assert!(origin_allowed("null"));
         assert!(origin_allowed("http://localhost"));
         assert!(origin_allowed("http://localhost:5173"));
         assert!(origin_allowed("https://localhost:9003"));
+        assert!(origin_allowed("http://127.0.0.1:8000"));
+        assert!(origin_allowed("http://[::1]:8000"));
+        assert!(origin_allowed("https://pixelpulseng.github.io"));
         assert!(origin_allowed("https://www.nonolithlabs.com"));
         assert!(origin_allowed("http://nonolithlabs.com"));
         assert!(origin_allowed("http://apps.nonolithlabs.com"));
+        assert!(!origin_allowed("null"));
         assert!(!origin_allowed("http://evil.example.com"));
         assert!(!origin_allowed("http://localhost.evil.com"));
+        assert!(!origin_allowed("http://127.0.0.1.evil.com"));
         assert!(!origin_allowed("http://nonolithlabs.com.evil.com"));
+        assert!(!origin_allowed("http://evilnonolithlabs.com"));
+        assert!(!origin_allowed("http://.nonolithlabs.com"));
+        assert!(!origin_allowed("http://pixelpulseng.github.io.evil.com"));
+        assert!(!origin_allowed("https://evil.github.io"));
         assert!(!origin_allowed("ftp://localhost"));
         assert!(!origin_allowed("http://localhost:abc"));
+        assert!(!origin_allowed("http://localhost:"));
     }
 }

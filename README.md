@@ -42,9 +42,14 @@ Differences from the C++ (deliberate, see SPEC.md §9)
   instead of an uncaught-exception 500.
 * **Q8 fixed** — sample counters are `u64` (no 11-hour wrap).
 * **Q10 fixed** — serials are NUL-trimmed server-side.
+* **Q9 fixed** — the Origin policy now applies to WebSocket upgrades too,
+  so an arbitrary web page can no longer drive a device through
+  `ws://localhost:9003`. The opaque origin `null` is rejected,
+  `https://pixelpulseng.github.io` and loopback dev-server origins are
+  accepted, and `nonolithlabs.com` must match exactly or as a subdomain.
 * Everything else — including the 402 error status (Q4), silent unknown WS
-  commands (Q6), the non-continuous stale-read window (Q7), no origin check
-  on WS upgrades (Q9) — is kept bug-for-bug for client compatibility.
+  commands (Q6), the non-continuous stale-read window (Q7) — is kept
+  bug-for-bug for client compatibility.
 * **Slow-client backpressure** (new) — binary data frames are dropped for a
   WebSocket client whose outgoing queue exceeds 8 MiB, instead of growing
   memory without bound (the C++ had the same unbounded queue via
@@ -60,10 +65,10 @@ Build & test
     cargo test                      # unit tests (ported from the C++ doctest suite)
     python3 tests/e2e.py target/release/nonolith-connect
 
-`tests/e2e.py` is a verbatim copy of the C++ repository's e2e script
-(vendored so CI can run it); the C++ repo's `tests/e2e.py` also passes
-unchanged. CI (`.github/workflows/ci.yml`) runs rustfmt, clippy
-(`-D warnings`), the unit tests, and the e2e suite on every push.
+`tests/e2e.py` is the C++ repository's e2e script (vendored so CI can run
+it), with the origin checks updated for the Q9 fix. CI
+(`.github/workflows/ci.yml`) runs rustfmt, clippy (`-D warnings`), the unit
+tests, and the e2e suite on every push.
 
 The git revision is embedded at build time by `build.rs` (`git describe`);
 set the `GITVERSION` environment variable to override it when building
@@ -74,5 +79,5 @@ Command line flags (same as the C++)
 
 **debug** — dump JSON communications to the console
 **allow-remote** — listen on all interfaces instead of localhost
-**allow-any-origin** — disable HTTP Origin checking
+**allow-any-origin** — disable Origin checking (HTTP and WebSocket)
 **port=N** — listen on port N (default 9003)

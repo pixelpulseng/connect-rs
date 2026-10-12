@@ -216,7 +216,11 @@ def run_tests(port):
                            headers={"Origin": "http://evil.example.com"})
     check("foreign origin rejected with 403", status == 403)
 
-    for origin in ("http://localhost:5173", "https://www.nonolithlabs.com", "null"):
+    status, _, _ = request(port, "GET", "/rest/v1/", headers={"Origin": "null"})
+    check("opaque null origin rejected with 403", status == 403)
+
+    for origin in ("http://localhost:5173", "https://www.nonolithlabs.com",
+                   "https://pixelpulseng.github.io"):
         status, _, _ = request(port, "GET", "/rest/v1/", headers={"Origin": origin})
         check(f"origin {origin} allowed", status == 200)
 
@@ -262,13 +266,18 @@ def run_tests(port):
     ws1.close()
     ws2.close()
 
-    # WS upgrade with a foreign origin: Beast accepts the upgrade before the
-    # origin check layer, so just verify it doesn't take the server down
+    # WS upgrade with a foreign origin must be refused (SPEC.md Q9 fixed):
+    # otherwise any web page could drive the device
     try:
         wsf = WebSocket(port, origin="http://evil.example.com")
         wsf.close()
+        check("foreign-origin WS upgrade rejected", False)
     except ConnectionError:
-        pass
+        check("foreign-origin WS upgrade rejected", True)
+    ws = WebSocket(port, origin="https://pixelpulseng.github.io")
+    check("allowed-origin WS upgrade accepted",
+          ws.recv_json().get("_action") == "serverHello")
+    ws.close()
     status, _, _ = request(port, "GET", "/rest/v1/")
     check("server alive after foreign-origin WS attempt", status == 200)
 
